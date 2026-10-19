@@ -4,8 +4,7 @@ const db = require("../config/connectDB");
 const sendEmail = require("../utils/sendEmail");
 const tplOwnerAccountCreated = require("../templates/ownerAccountCreated");
 
-const CLIENT_URL =
-  process.env.CLIENT_URL || "https://alaehscape-booking.vercel.app";
+const CLIENT_URL = process.env.CLIENT_URL || "https://alai-eh.vercel.app";
 
 const generateTempPassword = () =>
   crypto.randomBytes(9).toString("base64").replace(/[+/=]/g, "").slice(0, 10);

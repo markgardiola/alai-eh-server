@@ -21,8 +21,9 @@ const port = process.env.PORT || 5000;
 
 const allowedOrigins = [
   "http://localhost:5173",
-  "https://alaehscape-booking.vercel.app",
-];
+  "https://alaehscape-booking.vercel.app", // remove after the rename is confirmed working
+  process.env.CLIENT_URL, // e.g. https://alai-eh.vercel.app
+].filter(Boolean);
 
 app.use(
   cors({
