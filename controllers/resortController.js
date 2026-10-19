@@ -4,8 +4,15 @@ const { ensureDestinationExists } = require("./destinationController");
 const { ensureOwnerAccount } = require("./ownerController");
 
 exports.createResort = async (req, res) => {
-  const { name, location, barangay, description, ownerName, ownerEmail } =
-    req.body;
+  const {
+    name,
+    address,
+    location,
+    barangay,
+    description,
+    ownerName,
+    ownerEmail,
+  } = req.body;
 
   let rooms = [];
   let amenities = [];
@@ -22,7 +29,7 @@ exports.createResort = async (req, res) => {
 
   if (
     !name ||
-    !location ||
+    !address ||
     !barangay ||
     !description ||
     !ownerName ||
@@ -65,8 +72,16 @@ exports.createResort = async (req, res) => {
 
   try {
     const resortResult = await db.query(
-      "INSERT INTO resorts (name, location, barangay, description, owner_name, owner_email) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
-      [name, location, barangay, description, ownerName, ownerEmail],
+      "INSERT INTO resorts (name, address, location, barangay, description, owner_name, owner_email) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
+      [
+        name,
+        address,
+        location || "",
+        barangay,
+        description,
+        ownerName,
+        ownerEmail,
+      ],
     );
     const resortId = resortResult[0].id;
 
@@ -269,8 +284,15 @@ exports.deleteResort = async (req, res) => {
 
 exports.updateResort = async (req, res) => {
   const { id } = req.params;
-  const { name, location, barangay, description, ownerName, ownerEmail } =
-    req.body;
+  const {
+    name,
+    address,
+    location,
+    barangay,
+    description,
+    ownerName,
+    ownerEmail,
+  } = req.body;
 
   let rooms = []; // [{ id?: number, name: string, existingImages?: string[] }, ...]
   let amenities = [];
@@ -296,7 +318,7 @@ exports.updateResort = async (req, res) => {
 
   if (
     !name ||
-    !location ||
+    !address ||
     !barangay ||
     !description ||
     !ownerName ||
@@ -317,10 +339,11 @@ exports.updateResort = async (req, res) => {
     const coverImage = finalImages[0]; // legacy single-image column used by listing/search cards
 
     await db.query(
-      `UPDATE resorts SET name = $1, location = $2, barangay = $3, description = $4, image = $5, owner_name = $6, owner_email = $7 WHERE id = $8`,
+      `UPDATE resorts SET name = $1, address = $2, location = $3, barangay = $4, description = $5, image = $6, owner_name = $7, owner_email = $8 WHERE id = $9`,
       [
         name,
-        location,
+        address,
+        location || "",
         barangay,
         description,
         coverImage,

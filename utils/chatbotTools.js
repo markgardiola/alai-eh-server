@@ -109,7 +109,7 @@ async function searchResorts({ query, barangay }) {
   }
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   return db.query(
-    `SELECT r.id, r.name, r.location, r.barangay, r.description,
+    `SELECT r.id, r.name, r.address, r.barangay, r.description,
             COALESCE(AVG(rev.rating)::float, 0) AS avg_rating,
             COUNT(rev.id)::int AS review_count
        FROM resorts r
@@ -160,7 +160,7 @@ async function getResortDetails({ resortId, resortName }) {
   return {
     id: resort.id,
     name: resort.name,
-    location: resort.location,
+    address: resort.address,
     barangay: resort.barangay,
     description: resort.description,
     rooms: rooms.map((r) => r.name),
