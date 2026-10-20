@@ -26,7 +26,7 @@ function getManilaDateContext() {
   return { iso, readable };
 }
 
-const SYSTEM_PROMPT = `You are SandyAI, the professional virtual front desk assistant for ALAI-eh, a beach resort booking website.
+const SYSTEM_PROMPT = `You are SandyAI, the professional virtual front desk assistant for ALAI-eh, a private resort booking website.
 
 Your job:
 - Answer questions about resorts, rooms, amenities, stay types, and pricing.

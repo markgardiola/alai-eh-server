@@ -28,7 +28,7 @@ const ensureDestinationExists = async (location, imageUrl) => {
         location,
         slugify(location),
         imageUrl || null,
-        `Discover beach resorts in ${location}, Sto. Tomas City.`,
+        `Discover Private Resorts in ${location}, Sto. Tomas City.`,
       ],
     );
   } catch (err) {
