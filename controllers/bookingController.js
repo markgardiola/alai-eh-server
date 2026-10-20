@@ -346,6 +346,11 @@ exports.getAllBookings = async (req, res) => {
       TO_CHAR(bookings.check_out, 'FMMon FMDD, YYYY FMHH12:MI AM') AS check_out_display,
       bookings.total_price,
       bookings.payment_method,
+      (
+        bookings.total_price <= 0
+        OR COALESCE(bookings.receipt, '') <> ''
+        OR bookings.paypal_capture_id IS NOT NULL
+      ) AS payment_ready,
       bookings.cancellation_reason,
       bookings.status
     FROM bookings
@@ -483,6 +488,40 @@ exports.getBookingById = async (req, res) => {
   }
 };
 
+// Why a booking can't be approved yet, or null if payment is in order.
+// Approval requires real evidence of payment: a captured PayPal payment
+// or an uploaded GCash receipt. A fully discounted (0-peso) booking has
+// nothing to pay, so it's allowed through.
+function getApprovalBlocker(b) {
+  if (Number(b.total_price) <= 0) return null;
+
+  if (b.payment_method === "paypal") {
+    return b.paypal_capture_id
+      ? null
+      : {
+          code: "PAYPAL_NOT_COMPLETED",
+          message:
+            "The guest started a PayPal payment but it was never completed. The booking can't be approved until the payment succeeds.",
+        };
+  }
+
+  if (b.receipt) return null; // GCash receipt uploaded
+
+  if (b.payment_method === "gcash") {
+    return {
+      code: "GCASH_RECEIPT_MISSING",
+      message:
+        "This booking is marked as GCash but no payment receipt has been uploaded yet.",
+    };
+  }
+
+  return {
+    code: "NO_PAYMENT",
+    message:
+      "The guest hasn't paid yet. There is no successful payment or uploaded GCash receipt for this booking.",
+  };
+}
+
 exports.updateBookingStatus = async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -493,13 +532,24 @@ exports.updateBookingStatus = async (req, res) => {
 
   try {
     const existingRows = await db.query(
-      "SELECT status, payment_method, paypal_capture_id, paypal_refund_id, total_price FROM bookings WHERE id = $1",
+      "SELECT status, payment_method, paypal_capture_id, paypal_refund_id, total_price, receipt FROM bookings WHERE id = $1",
       [id],
     );
     if (existingRows.length === 0)
       return res.status(404).json({ error: "Booking not found" });
 
     const existing = existingRows[0];
+
+    // Never confirm a booking that hasn't actually been paid for.
+    if (status === "Confirmed" && existing.status !== "Confirmed") {
+      const blocker = getApprovalBlocker(existing);
+      if (blocker) {
+        return res
+          .status(409)
+          .json({ error: blocker.message, code: blocker.code });
+      }
+    }
+
     let refundOutcome = null;
 
     // If an admin directly cancels a booking that was actually paid via
