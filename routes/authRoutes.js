@@ -1,11 +1,26 @@
 const express = require("express");
 const router = express.Router();
 const authController = require("../controllers/authController");
+const preventDuplicate = require("../middlewares/preventDuplicate");
+const byEmail = (name) => (req) =>
+  `${name}:${String(req.body?.email || "").toLowerCase()}`;
 
 // Registration (SMS OTP verification)
-router.post("/register/request-otp", authController.requestRegistrationOtp);
-router.post("/register/resend-otp", authController.resendRegistrationOtp);
-router.post("/register/verify-otp", authController.verifyRegistrationOtp);
+router.post(
+  "/register/request-otp",
+  preventDuplicate(byEmail("reg-otp")),
+  authController.requestRegistrationOtp,
+);
+router.post(
+  "/register/resend-otp",
+  preventDuplicate(byEmail("reg-resend")),
+  authController.resendRegistrationOtp,
+);
+router.post(
+  "/register/verify-otp",
+  preventDuplicate(byEmail("reg-verify")),
+  authController.verifyRegistrationOtp,
+);
 
 // Password recovery (SMS or email OTP, user's choice)
 router.post("/password-reset/lookup", authController.lookupRecoveryOptions);

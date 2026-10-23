@@ -3,6 +3,7 @@ const router = express.Router();
 const verifyToken = require("../middlewares/verifyToken");
 const requireAdmin = require("../middlewares/requireAdmin");
 const stayTypeController = require("../controllers/stayTypeController");
+const preventDuplicate = require("../middlewares/preventDuplicate");
 
 router.get(
   "/resorts/:resortId/stay-types",
@@ -12,6 +13,7 @@ router.post(
   "/resorts/:resortId/stay-types",
   verifyToken,
   requireAdmin,
+  preventDuplicate((req) => `stay_create:${req.params.resortId}`),
   stayTypeController.createStayType,
 );
 router.put(

@@ -4,8 +4,14 @@ const verifyToken = require("../middlewares/verifyToken");
 const requireAdmin = require("../middlewares/requireAdmin");
 const bookingController = require("../controllers/bookingController");
 const uploadReceipt = require("../middlewares/uploadReceipt");
+const preventDuplicate = require("../middlewares/preventDuplicate");
 
-router.post("/book", verifyToken, bookingController.submitBooking);
+router.post(
+  "/book",
+  verifyToken,
+  preventDuplicate((req) => `book:${req.userId}`),
+  bookingController.submitBooking,
+);
 router.get(
   "/resorts/:resortId/booked-dates",
   bookingController.getResortBookedDates,
@@ -38,6 +44,7 @@ router.get("/total_bookings", bookingController.getTotalBookings);
 router.post(
   "/upload_receipt",
   verifyToken,
+  preventDuplicate((req) => `receipt:${req.userId}`),
   uploadReceipt.single("receipt"),
   bookingController.uploadPaymentReceipt,
 );
@@ -46,6 +53,7 @@ router.put(
   "/bookings/:id/status",
   verifyToken,
   requireAdmin,
+  preventDuplicate((req) => `status:${req.params.id}`),
   bookingController.updateBookingStatus,
 );
 router.get(
@@ -68,12 +76,14 @@ router.put(
   "/bookings/:id/refund/approve",
   verifyToken,
   requireAdmin,
+  preventDuplicate((req) => `refund:${req.params.id}`),
   bookingController.approveRefund,
 );
 router.put(
   "/bookings/:id/refund/deny",
   verifyToken,
   requireAdmin,
+  preventDuplicate((req) => `refund:${req.params.id}`),
   bookingController.denyRefund,
 );
 router.post(
