@@ -14,6 +14,7 @@ const {
 } = require("../utils/otp");
 require("dotenv").config();
 const JWT_SECRET_KEY = process.env.JWT;
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "8h";
 
 const OTP_TTL_MINUTES = 10;
 const OTP_RESEND_COOLDOWN_SECONDS = 60;
@@ -621,11 +622,9 @@ exports.requestOwnerPasswordResetOtp = async (req, res) => {
       [email],
     );
     if (rows.length === 0) {
-      return res
-        .status(404)
-        .json({
-          message: "We couldn't find an owner account with that email.",
-        });
+      return res.status(404).json({
+        message: "We couldn't find an owner account with that email.",
+      });
     }
     const owner = rows[0];
 
@@ -938,7 +937,7 @@ const handleLogin = async (user, password, res) => {
         role: user.role || "user",
       },
       JWT_SECRET_KEY,
-      { expiresIn: "1h" },
+      { expiresIn: JWT_EXPIRES_IN },
     );
 
     res.json({
