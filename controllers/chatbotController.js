@@ -33,6 +33,7 @@ Your job:
 - Check availability for a specific stay type and date -- always confirm the exact stay type name (call get_resort_details first if unsure) before calling check_availability; never guess it.
 - Look up the status of a logged-in customer's own booking.
 - Guide customers toward booking or viewing a resort by including a button link -- never take payment or "confirm" a booking yourself; the customer always finishes booking and payment on the website.
+- Directions: when a guest asks how to get to a resort, where it is, or for navigation, call get_directions. A "Get Directions" button is attached to your reply automatically -- never write map links or URLs yourself. Give the resort's address, then explain: tap Get Directions, allow location access if asked, and Google Maps shows the route from where they are (they can change the starting point or travel mode there). If the tool says the map location is approximate, mention that the pin is based on the address and may be slightly off. Never invent routes, road names, landmarks, distances, or travel times -- Never create a [[button:...]] for directions or maps -- the Get Directions button is added for you. The only buttons you may write are the resort details, start a booking, and view a booking pages listed above.
 
 Rules:
 - Only state facts returned by your tools. Never guess a price, room, amenity, or availability.
@@ -48,7 +49,7 @@ Rules:
   - Resort details page: /viewDetails/{resortId}
   - Start a booking: /booking/{resortId}
   - View a specific booking: /viewMyBooking/{bookingId}
-- Never invent a resortId or bookingId -- only use ids a tool actually returned.`;
+- Never invent a resortId or bookingId -- only use ids a tool returned in this reply. If you don't have the id yet, call search_resorts or get_resort_details first, or leave the button out.`;
 
 const RETRYABLE_STATUS = new Set([429, 503]); // rate limited / overloaded -- worth retrying
 
@@ -75,7 +76,12 @@ exports.sendMessage = async (req, res) => {
     return res.status(400).json({ message: "message is required." });
   }
 
-  const context = { userId: req.userId };
+  const context = {
+    userId: req.userId,
+    actions: [],
+    knownResortIds: new Set(),
+    knownBookingIds: new Set(),
+  };
   const functionDeclarations = getToolsFor(context);
   const { iso: todayIso, readable: todayReadable } = getManilaDateContext();
 
@@ -135,15 +141,32 @@ exports.sendMessage = async (req, res) => {
 
     const rawText = (response.text || "").trim();
 
-    // Pull [[button:Label|/path]] markers into structured actions for the
-    // frontend to render as real buttons, and strip them from the text.
+    // Model-written buttons may only point at pages that really exist.
+    // Anything else (an invented /getDirections/2, an external URL) is
+    // stripped from the reply and never becomes a button.
+    const BUTTON_PATH = /^\/(viewDetails|booking|viewMyBooking)\/(\d+)$/;
     const actions = [];
     const reply = rawText
       .replace(/\[\[button:([^|\]]+)\|([^\]]+)\]\]/g, (_, label, url) => {
-        actions.push({ label: label.trim(), url: url.trim() });
+        const path = url.trim();
+        const m = BUTTON_PATH.exec(path);
+        if (m) {
+          const id = Number(m[2]);
+          const known =
+            m[1] === "viewMyBooking"
+              ? context.knownBookingIds
+              : context.knownResortIds;
+          // Only ids a tool actually returned in this request become buttons.
+          if (known.has(id)) actions.push({ label: label.trim(), url: path });
+        }
         return "";
       })
       .trim();
+
+    // Server-built buttons from tools (e.g. Get Directions), de-duplicated.
+    for (const a of context.actions) {
+      if (!actions.some((x) => x.url === a.url)) actions.push(a);
+    }
 
     res.json({ reply, actions });
   } catch (err) {

@@ -1,5 +1,6 @@
 const { Type } = require("@google/genai");
 const db = require("../config/connectDB");
+const { getMapTarget, directionsUrl, safePinUrl } = require("./mapTarget");
 
 // Gemini's function-declaration format (JSON-schema-like, using its Type
 // enum). The execution functions below are unchanged from before -- only
@@ -63,6 +64,24 @@ const baseToolDeclarations = [
       required: ["resortId", "date", "stayTypeName"],
     },
   },
+  {
+    name: "get_directions",
+    description:
+      "Get navigation help for ONE resort. Attaches a 'Get Directions' button (Google Maps, live route from the guest's current location) to your reply and returns the resort's address and how precise its map location is. Use whenever the guest asks how to get there, where the resort is, for directions, or for navigation. You cannot see routes yourself.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        resortId: {
+          type: Type.INTEGER,
+          description: "The resort's id, if already known.",
+        },
+        resortName: {
+          type: Type.STRING,
+          description: "The resort's name, if id is not known.",
+        },
+      },
+    },
+  },
 ];
 
 // Only offered to the model when the request is authenticated -- an
@@ -94,7 +113,7 @@ function getToolsFor(context) {
 
 // --- Everything below is unchanged from the Claude version ---
 
-async function searchResorts({ query, barangay }) {
+async function searchResorts({ query, barangay }, context) {
   const conditions = [];
   const params = [];
   if (query) {
@@ -108,7 +127,7 @@ async function searchResorts({ query, barangay }) {
     conditions.push(`LOWER(r.barangay) = LOWER($${params.length})`);
   }
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-  return db.query(
+  const rows = await db.query(
     `SELECT r.id, r.name, r.address, r.barangay, r.description,
             COALESCE(AVG(rev.rating)::float, 0) AS avg_rating,
             COUNT(rev.id)::int AS review_count
@@ -120,9 +139,11 @@ async function searchResorts({ query, barangay }) {
        LIMIT 8`,
     params,
   );
+  rows.forEach((r) => context.knownResortIds.add(Number(r.id)));
+  return rows;
 }
 
-async function getResortDetails({ resortId, resortName }) {
+async function getResortDetails({ resortId, resortName }, context) {
   let resort;
   if (resortId) {
     resort = (
@@ -137,6 +158,7 @@ async function getResortDetails({ resortId, resortName }) {
     )[0];
   }
   if (!resort) return { error: "Resort not found." };
+  context.knownResortIds.add(Number(resort.id));
 
   const [rooms, amenities, stayTypes, ratingRows] = await Promise.all([
     db.query("SELECT name FROM rooms WHERE resort_id = $1", [resort.id]),
@@ -181,6 +203,7 @@ async function checkAvailability({ resortId, date, stayTypeName }) {
     return {
       error: `No stay type matching "${stayTypeName}" found for this resort.`,
     };
+  context.knownResortIds.add(Number(resortId));
 
   // Same computation submitBooking uses -- plain strings, never JS Date
   // objects, so nothing drifts across a timezone conversion.
@@ -232,19 +255,71 @@ async function getMyBookings({ bookingId }, context) {
         ORDER BY b.created_at DESC LIMIT 5`;
   const params = bookingId ? [bookingId, context.userId] : [context.userId];
   const rows = await db.query(sql, params);
+  rows.forEach((r) => {
+    context.knownBookingIds.add(Number(r.id));
+    context.knownResortIds.add(Number(r.resort_id));
+  });
   return rows.length
     ? rows
     : { message: "No matching booking found for this account." };
 }
 
+async function getDirections({ resortId, resortName }, context) {
+  let resort;
+  if (resortId) {
+    resort = (
+      await db.query("SELECT * FROM resorts WHERE id = $1", [resortId])
+    )[0];
+  } else if (resortName) {
+    resort = (
+      await db.query(
+        "SELECT * FROM resorts WHERE name ILIKE $1 ORDER BY created_at DESC LIMIT 1",
+        [`%${resortName}%`],
+      )
+    )[0];
+  }
+  if (!resort) return { error: "Resort not found." };
+  context.knownResortIds.add(Number(resort.id));
+
+  const target = getMapTarget(resort);
+  const pinUrl = safePinUrl(resort.location);
+
+  // The server, not the model, builds these links. The controller attaches
+  // them to the reply as real buttons.
+  context.actions.push({
+    label: "Get Directions",
+    url: directionsUrl(target.query),
+    external: true,
+  });
+  if (pinUrl) {
+    context.actions.push({
+      label: "Open Pin in Google Maps",
+      url: pinUrl,
+      external: true,
+    });
+  }
+
+  return {
+    resortId: resort.id,
+    resort: resort.name,
+    address: resort.address || null,
+    mapAccuracy: target.exact
+      ? "exact pin"
+      : "approximate (based on the resort name and address)",
+    note: "A Get Directions button is attached to your reply. Do not write any link yourself.",
+  };
+}
+
 async function executeTool(name, args, context) {
   switch (name) {
     case "search_resorts":
-      return searchResorts(args);
+      return searchResorts(args, context);
     case "get_resort_details":
-      return getResortDetails(args);
+      return getResortDetails(args, context);
     case "check_availability":
       return checkAvailability(args);
+    case "get_directions":
+      return getDirections(args, context);
     case "get_my_bookings":
       return getMyBookings(args, context);
     default:
