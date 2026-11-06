@@ -2,6 +2,7 @@ const db = require("../config/connectDB");
 const { buildValuesClause } = require("../utils/buildValuesClause");
 const { ensureDestinationExists } = require("./destinationController");
 const { ensureOwnerAccount } = require("./ownerController");
+const { normalizeStayTypeName } = require("../utils/stayTypeName");
 
 exports.createResort = async (req, res) => {
   const {
@@ -154,7 +155,7 @@ exports.createResort = async (req, res) => {
     // required, validated above.
     const stayTypeValues = stayTypes.map((st) => [
       resortId,
-      st.name.trim(),
+      normalizeStayTypeName(st.name),
       st.checkInTime,
       st.checkOutTime,
       !!st.spansNextDay,

@@ -111,12 +111,12 @@ exports.getDashboardAnalytics = async (req, res) => {
       ),
 
       db.query(
-        `SELECT COALESCE(stay_type_name, 'Unspecified') AS name,
+        `SELECT COALESCE(MODE() WITHIN GROUP (ORDER BY stay_type_name), 'Unspecified') AS name,
                 COUNT(*)::int AS bookings,
                 COALESCE(SUM(total_price), 0)::float AS revenue
            FROM bookings
           WHERE status = ${REVENUE_STATUS} AND created_at >= NOW() - ($1 || ' days')::interval
-          GROUP BY 1
+          GROUP BY LOWER(REGEXP_REPLACE(COALESCE(stay_type_name, ''), '[^a-zA-Z0-9]', '', 'g'))
           ORDER BY revenue DESC`,
         [days],
       ),

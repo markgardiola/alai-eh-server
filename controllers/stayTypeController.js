@@ -1,4 +1,5 @@
 const db = require("../config/connectDB");
+const { normalizeStayTypeName } = require("../utils/stayTypeName");
 
 const validateStayTypeInput = ({ name, checkInTime, checkOutTime, price }) => {
   if (!name || !name.trim()) return "A name is required.";
@@ -55,7 +56,14 @@ exports.createStayType = async (req, res) => {
       `INSERT INTO stay_types (resort_id, name, check_in_time, check_out_time, spans_next_day, price)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id`,
-      [resortId, name.trim(), checkInTime, checkOutTime, !!spansNextDay, price],
+      [
+        resortId,
+        normalizeStayTypeName(name),
+        checkInTime,
+        checkOutTime,
+        !!spansNextDay,
+        price,
+      ],
     );
     res.status(201).json({ id: result[0].id, message: "Stay type added." });
   } catch (err) {
@@ -85,7 +93,14 @@ exports.updateStayType = async (req, res) => {
               spans_next_day = $4, price = $5
         WHERE id = $6
         RETURNING id`,
-      [name.trim(), checkInTime, checkOutTime, !!spansNextDay, price, id],
+      [
+        normalizeStayTypeName(name),
+        checkInTime,
+        checkOutTime,
+        !!spansNextDay,
+        price,
+        id,
+      ],
     );
 
     if (result.length === 0)
