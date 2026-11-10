@@ -374,6 +374,7 @@ exports.getRefundRequests = async (req, res) => {
     SELECT
       bookings.id AS booking_id,
       users.username,
+      bookings.full_name,
       resorts.name AS resort_name,
       bookings.stay_type_name,
       bookings.check_in,

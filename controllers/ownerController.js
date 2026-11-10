@@ -16,6 +16,132 @@ const generateTempPassword = () =>
 // account gets a temp password emailed to them; an existing one is left
 // untouched (so listing a second resort under the same email just adds
 // it to their portal, no new account or email).
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// ---- Admin: manage owner accounts --------------------------------------
+
+exports.adminGetAllOwners = async (req, res) => {
+  try {
+    const rows = await db.query(
+      `SELECT o.id, o.username, o.email,
+              COUNT(r.id)::int AS resort_count,
+              COALESCE(ARRAY_AGG(r.name ORDER BY r.name) FILTER (WHERE r.id IS NOT NULL), '{}') AS resort_names
+         FROM resort_owners o
+         LEFT JOIN resorts r ON r.owner_user_id = o.id
+        GROUP BY o.id
+        ORDER BY o.username`,
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("Error fetching owners:", err);
+    res.status(500).json({ message: "Failed to fetch resort owners." });
+  }
+};
+
+exports.adminUpdateOwner = async (req, res) => {
+  const { id } = req.params;
+  const username = String(req.body.username ?? "").trim();
+  const email = String(req.body.email ?? "").trim();
+  const password = req.body.password ? String(req.body.password) : "";
+
+  if (!username || !email) {
+    return res
+      .status(400)
+      .json({ message: "Username and email are required." });
+  }
+  if (!EMAIL_PATTERN.test(email)) {
+    return res
+      .status(400)
+      .json({ message: "Please enter a valid email address." });
+  }
+  if (password && password.length < 6) {
+    return res
+      .status(400)
+      .json({ message: "New password must be at least 6 characters." });
+  }
+
+  try {
+    const taken = await db.query(
+      "SELECT id FROM resort_owners WHERE LOWER(email) = LOWER($1) AND id <> $2",
+      [email, id],
+    );
+    if (taken.length > 0) {
+      return res
+        .status(409)
+        .json({
+          message: "That email is already used by another owner account.",
+        });
+    }
+
+    const passwordHash = password ? await bcrypt.hash(password, 10) : null;
+
+    // One statement: update the account AND the owner name/email copied
+    // onto each of their resorts. Without the sync, the next time an admin
+    // saved one of those resorts the old email would run through
+    // ensureOwnerAccount and create a brand-new duplicate owner account.
+    const rows = await db.query(
+      `WITH upd AS (
+         UPDATE resort_owners
+            SET username = $1, email = $2, password = COALESCE($3, password)
+          WHERE id = $4
+        RETURNING id, username, email
+       ), sync AS (
+         UPDATE resorts r
+            SET owner_name = upd.username, owner_email = upd.email
+           FROM upd
+          WHERE r.owner_user_id = upd.id
+       )
+       SELECT id FROM upd`,
+      [username, email, passwordHash, id],
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Owner not found." });
+    }
+    res.json({ message: "Owner updated successfully." });
+  } catch (err) {
+    if (err.code === "23505") {
+      return res
+        .status(409)
+        .json({
+          message: "That email is already used by another owner account.",
+        });
+    }
+    console.error("Error updating owner:", err);
+    res.status(500).json({ message: "Failed to update owner." });
+  }
+};
+
+exports.adminDeleteOwner = async (req, res) => {
+  const { id } = req.params;
+  try {
+    // Never silently orphan (or cascade-delete) resorts and their bookings.
+    const linked = await db.query(
+      "SELECT COUNT(*)::int AS n FROM resorts WHERE owner_user_id = $1",
+      [id],
+    );
+    const n = linked[0].n;
+    if (n > 0) {
+      return res.status(409).json({
+        message: `This owner still has ${n} resort${n > 1 ? "s" : ""} linked. Reassign or delete ${n > 1 ? "them" : "it"} first.`,
+      });
+    }
+
+    const rows = await db.query(
+      "DELETE FROM resort_owners WHERE id = $1 RETURNING id",
+      [id],
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Owner not found." });
+    }
+    res.json({ message: "Owner deleted successfully." });
+  } catch (err) {
+    console.error("Error deleting owner:", err);
+    res.status(500).json({ message: "Failed to delete owner." });
+  }
+};
+
 const ensureOwnerAccount = async (ownerEmail, ownerName, resortName) => {
   if (!ownerEmail) return null;
 
