@@ -19,20 +19,29 @@ const chatbotRoutes = require("./routes/chatbotRoutes");
 
 const port = process.env.PORT || 5000;
 
+// Trailing slashes and stray spaces never match a browser's Origin header,
+// so strip them. EXTRA_ALLOWED_ORIGINS is an optional comma-separated list
+// (e.g. a Vercel preview URL you want to test against).
+const normalizeOrigin = (o) => o.trim().replace(/\/+$/, "");
 const allowedOrigins = [
   "http://localhost:5173",
-  "https://alaehscape-booking.vercel.app", // remove after the rename is confirmed working
-  process.env.CLIENT_URL, // e.g. https://alai-eh.vercel.app
-].filter(Boolean);
+  "https://alaehscape-booking.vercel.app", // old URL; remove once you're sure it's unused
+  process.env.CLIENT_URL,
+  ...(process.env.EXTRA_ALLOWED_ORIGINS || "").split(","),
+]
+  .filter(Boolean)
+  .map(normalizeOrigin);
 
 app.use(
   cors({
     origin: function (origin, callback) {
       if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
+        return callback(null, true);
       }
+      // Refuse without throwing: the browser blocks the response, and the
+      // log shows exactly which origin it was.
+      console.warn(`CORS blocked origin: ${origin}`);
+      callback(null, false);
     },
     credentials: true,
   }),
