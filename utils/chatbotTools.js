@@ -192,7 +192,7 @@ async function getResortDetails({ resortId, resortName }, context) {
   };
 }
 
-async function checkAvailability({ resortId, date, stayTypeName }) {
+async function checkAvailability({ resortId, date, stayTypeName }, context) {
   const stayTypeRows = await db.query(
     `SELECT id, name, check_in_time, check_out_time, spans_next_day
        FROM stay_types WHERE resort_id = $1 AND name ILIKE $2 LIMIT 1`,
@@ -317,7 +317,7 @@ async function executeTool(name, args, context) {
     case "get_resort_details":
       return getResortDetails(args, context);
     case "check_availability":
-      return checkAvailability(args);
+      return checkAvailability(args, context);
     case "get_directions":
       return getDirections(args, context);
     case "get_my_bookings":
